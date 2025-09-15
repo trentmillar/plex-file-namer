@@ -1,0 +1,164 @@
+name: Create Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  create-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Extract version from PR
+      id: extract_version
+      run: |
+        # Check PR title for version pattern (e.g., "Release v1.2.3" or "Version 1.2.3")
+        PR_TITLE="${{ github.event.pull_request.title }}"
+        PR_BODY="${{ github.event.pull_request.body }}"
+        
+        # Try to extract version from title
+        if [[ "$PR_TITLE" =~ [Vv]ersion[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+        elif [[ "$PR_TITLE" =~ [Rr]elease[[:space:]]*[Vv]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+        elif [[ "$PR_TITLE" =~ ^[Vv]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+        # Try to extract from PR body
+        elif [[ "$PR_BODY" =~ [Vv]ersion:[[:space:]]*[Vv]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+        elif [[ "$PR_BODY" =~ [Rr]elease:[[:space:]]*[Vv]?([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+        else
+          echo "No version found in PR title or body"
+          exit 0
+        fi
+        
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION_TAG=v$VERSION" >> $GITHUB_OUTPUT
+        echo "Found version: $VERSION"
+    
+    - name: Check if release exists
+      if: steps.extract_version.outputs.VERSION
+      id: check_release
+      run: |
+        if gh release view "v${{ steps.extract_version.outputs.VERSION }}" >/dev/null 2>&1; then
+          echo "Release v${{ steps.extract_version.outputs.VERSION }} already exists"
+          echo "EXISTS=true" >> $GITHUB_OUTPUT
+        else
+          echo "EXISTS=false" >> $GITHUB_OUTPUT
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create release package
+      if: steps.extract_version.outputs.VERSION && steps.check_release.outputs.EXISTS == 'false'
+      run: |
+        VERSION="${{ steps.extract_version.outputs.VERSION }}"
+        PACKAGE_NAME="plex-file-renamer-v${VERSION}"
+        
+        # Create package directory
+        mkdir -p "$PACKAGE_NAME"
+        
+        # Copy files
+        cp plex_file_renamer.py "$PACKAGE_NAME/"
+        cp requirements.txt "$PACKAGE_NAME/"
+        cp README.md "$PACKAGE_NAME/"
+        cp install.sh "$PACKAGE_NAME/"
+        [ -f LICENSE ] && cp LICENSE "$PACKAGE_NAME/"
+        [ -f CONTRIBUTING.md ] && cp CONTRIBUTING.md "$PACKAGE_NAME/"
+        
+        # Create version file
+        echo "$VERSION" > "$PACKAGE_NAME/VERSION"
+        
+        # Create zip
+        zip -r "${PACKAGE_NAME}.zip" "$PACKAGE_NAME"
+        
+        # Create tar.gz
+        tar -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
+        
+        echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
+    
+    - name: Generate release notes
+      if: steps.extract_version.outputs.VERSION && steps.check_release.outputs.EXISTS == 'false'
+      id: release_notes
+      run: |
+        VERSION="${{ steps.extract_version.outputs.VERSION }}"
+        
+        # Get PR description
+        PR_BODY=$(cat << 'EOF'
+        ${{ github.event.pull_request.body }}
+        EOF
+        )
+        
+        # Create release notes
+        cat << EOF > release_notes.md
+        # Plex File Renamer v${VERSION}
+        
+        ## What's New
+        ${PR_BODY}
+        
+        ## Installation
+        
+        ### Option 1: One-line installer (Recommended)
+        \`\`\`bash
+        curl -sSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+        \`\`\`
+        
+        ### Option 2: Manual installation
+        1. Download the release package below
+        2. Extract the archive
+        3. Run \`pip install -r requirements.txt\`
+        4. Run \`python plex_file_renamer.py\`
+        
+        ## Requirements
+        - Python 3.6+
+        - ffmpeg (optional, for media info)
+        - TMDb API key (free from https://www.themoviedb.org/settings/api)
+        
+        ## Changes
+        View the [full changelog](https://github.com/${{ github.repository }}/compare/v${{ steps.extract_version.outputs.PREVIOUS_VERSION }}...v${VERSION})
+        
+        ---
+        *Released by GitHub Actions from PR #${{ github.event.pull_request.number }}*
+        EOF
+    
+    - name: Create GitHub Release
+      if: steps.extract_version.outputs.VERSION && steps.check_release.outputs.EXISTS == 'false'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ steps.extract_version.outputs.VERSION }}
+        name: Release v${{ steps.extract_version.outputs.VERSION }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          ${{ env.PACKAGE_NAME }}.zip
+          ${{ env.PACKAGE_NAME }}.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update install.sh with repo info
+      if: steps.extract_version.outputs.VERSION && steps.check_release.outputs.EXISTS == 'false'
+      run: |
+        # Update the install.sh in main branch with correct repo owner
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        
+        # Update REPO_OWNER in install.sh
+        sed -i "s/REPO_OWNER=\"your-username\"/REPO_OWNER=\"${GITHUB_REPOSITORY_OWNER}\"/" install.sh
+        
+        # Commit if changed
+        if git diff --exit-code install.sh; then
+          echo "No changes to commit"
+        else
+          git add install.sh
+          git commit -m "Update install.sh with repository owner [skip ci]"
+          git push
+        fi
