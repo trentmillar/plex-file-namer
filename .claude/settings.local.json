@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(TMDB_API_KEY=\"5f25116b1c8c8b28b044cfc39796fd75\" python3 plex_file_renamer.py \"/tmp/test_pattern/14-09-2015-Part 2.mp4\" --pattern \"{DD-MM-YYYY}\" --show-name \"Coronation Street\" --dry-run)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -8,7 +8,7 @@ A powerful Python tool that automatically renames your video files to follow Ple
 - 📁 **Folder Analysis**: Extracts show names and seasons from folder structure
 - 🔍 **Flexible Parsing**: Handles various filename patterns (S01E01, 1x01, E01, etc.)
 - 🎬 **Episode Titles**: Fetches actual episode titles from TMDb API
-- 🎨 **Quality Detection**: Automatically detects and preserves quality/source info
+- 🎨 **Quality Detection**: Automatically detects and preserves quality/source info from actual video analysis
 - 🛡️ **Safety First**: Creates backup files for easy reverting
 - 📺 **Plex-Perfect**: Follows official Plex naming conventions exactly
 - 🌐 **Free API**: Uses TMDb's free API (no subscription required)
@@ -18,6 +18,14 @@ A powerful Python tool that automatically renames your video files to follow Ple
 - 🎞️ **Cinematic Aspect Ratios**: Correctly detects resolution for wide aspect ratio videos
 - 📂 **Movie Folder Detection**: Won't misidentify movies as TV shows when in "Movies" folders
 - ✅ **Interactive Confirmation**: Prompts before each rename (with option to skip)
+- ⏱️ **Smart Duration Matching**: When multiple matches exist, uses video duration to find the correct movie/show
+- 🔢 **Roman Numeral Support**: Automatically handles sequel numbering (II ↔ 2, III ↔ 3, etc.)
+- 🏷️ **TMDb ID Integration**: Adds {tmdb-id} to filenames for accurate Plex matching
+- 🎬 **Edition Support**: Properly tags Director's Cut, Criterion, Extended editions using {edition-name}
+- ⚡ **Skip Formatted Files**: Option to skip already-processed files with TMDb IDs
+- 📅 **Date-Based TV Shows**: Advanced pattern matching for date-based episodes (news shows, daily shows)
+- 🔧 **Robust File Processing**: Dynamic file discovery prevents errors during batch renaming
+- 🎯 **Negative Patterns**: Use {TITLE?} syntax to ignore extracted values while using explicit show names
 
 ## 🚀 Quick Start
 
@@ -134,7 +142,52 @@ python plex_file_renamer.py /path/to/videos --type tv --rename
 
 # Only detect years in parentheses (2004), not - 2004 or space 2004
 python plex_file_renamer.py /path/to/videos --parentheses-only --rename
+
+# Skip files already properly formatted with TMDb IDs
+python plex_file_renamer.py /path/to/videos --skip-formatted --rename
 ```
+
+### Advanced Pattern Matching
+
+For complex file structures, use custom patterns to extract show names and dates:
+
+```bash
+# Pattern for date-based TV shows (e.g., News shows, Late Night shows)
+# Note: No --root-folder needed when using main path argument
+python plex_file_renamer.py /path/to/videos --pattern "SHOW_NAME/DATE_FORMAT{YYYY-MM-DD}/IGNORE" --rename
+
+# Pattern variations for different date formats and structures
+python plex_file_renamer.py /path/to/videos --pattern "SHOW_NAME/DATE_FORMAT{YEAR}/{TITLE?}.{DD-MM-YY}" --rename
+python plex_file_renamer.py /path/to/videos --pattern "SHOW_NAME/DATE_FORMAT{DD-MM-YYYY}/IGNORE" --rename
+
+# Examples:
+# File: /Shows/The Daily Show/2023-03-15/episode.mp4
+# Pattern: "SHOW_NAME/DATE_FORMAT{YYYY-MM-DD}/IGNORE"
+# Result: The Daily Show (2024) - 2023-03-15.mp4
+
+# File: /Coronation Street/2015/01-2015/Corrie.02.01.15.PT1.mp4  
+# Pattern: "SHOW_NAME/DATE_FORMAT{YEAR}/{TITLE?}.{DD-MM-YY}"
+# Result: Coronation Street (1960) - s56e01 - Fri Jan 02 2015 Part 1.mp4
+
+# Use explicit show name when folder structure doesn't contain it clearly
+python plex_file_renamer.py /path/to/videos --pattern "DATE_FORMAT{YEAR}/{TITLE?}.{DD-MM-YY}" --show-name "Coronation Street" --rename
+```
+
+**Pattern placeholders:**
+- `SHOW_NAME`: Extracts the show name from folder structure
+- `DATE_FORMAT{format}`: Extracts dates in specified format (YYYY-MM-DD, DD-MM-YY, M-DD-YY, etc.)
+- `{TITLE?}`: Negative pattern - matches title but ignores it (use with --show-name)
+- `IGNORE`: Ignores parts of the path
+- Pattern matching is case-insensitive
+
+**Date-based Episode Lookup:**
+When using date patterns with explicit show names, the tool automatically:
+1. Searches TMDb for the show (without year filtering for long-running shows)
+2. Looks up the actual episode that aired on the extracted date
+3. Finds the correct season and episode numbers
+4. Uses the real episode title from TMDb
+
+This is perfect for long-running daily shows like Coronation Street, news programs, or talk shows where episodes are identified by air date rather than arbitrary season/episode numbers.
 
 ### Reverting Changes
 
@@ -146,35 +199,97 @@ python plex_file_renamer.py /path/to/videos --revert --dry-run
 python plex_file_renamer.py /path/to/videos --revert
 ```
 
+## 🏷️ TMDb ID Support
+
+The tool automatically adds TMDb IDs to help Plex accurately identify content:
+
+### Format
+- **Movies**: `Title (Year) {tmdb-id} [quality].ext`
+- **TV Shows**: `Title (Year) {tmdb-id} - sXXeXX - Episode [quality].ext`
+
+### Benefits
+- Guarantees correct metadata matching in Plex
+- Prevents misidentification of similar titles
+- Works with foreign and obscure content
+- Speeds up Plex library scanning
+
+### Example
+**Input:** `avatar.mkv`
+**Output:** `Avatar (2009) {tmdb-19995} [1080p H264 AAC].mkv`
+
+## 🎬 Edition Support (Plex Pass Feature)
+
+Properly tags different movie editions using Plex's `{edition-name}` format:
+
+### Supported Editions
+- **Director's Cut** → `{edition-Director's Cut}`
+- **Theatrical** → `{edition-Theatrical}`
+- **Extended** → `{edition-Extended}`
+- **Unrated** → `{edition-Unrated}`
+- **Criterion** → `{edition-Criterion}`
+- **Special Edition** → `{edition-Special Edition}`
+- **Collector's Edition** → `{edition-Collector's Edition}`
+- **Final Cut** → `{edition-Final Cut}`
+- **Remastered** → `{edition-Remastered}`
+- **Omnibus** → `{edition-Omnibus}`
+- **Special** → `{edition-Special}`
+- **Extra** → `{edition-Extra}`
+- **Highlights** → `{edition-Highlights}`
+- **Compilation** → `{edition-Compilation}`
+
+### Examples
+**Input:** `Blade Runner - Director's Cut.mp4`
+**Output:** `Blade Runner (1982) {tmdb-78} {edition-Director's Cut} [1080p H264 AAC].mp4`
+
+**Input:** `Eyimofe This Is My Desire (2020) - Criterion.mkv`
+**Output:** `Eyimofe This Is My Desire (2020) {tmdb-123456} {edition-Criterion} [1080p HEVC EAC3].mkv`
+
+**Input:** `The Beatles Anthology - Omnibus.mp4`
+**Output:** `The Beatles Anthology (1995) {tmdb-12345} {edition-Omnibus} [720p H264 AAC].mp4`
+
+**Input:** `Marvel Studios Legends - Compilation.mkv`
+**Output:** `Marvel Studios Legends (2021) {tmdb-67890} {edition-Compilation} [1080p H264 EAC3].mkv`
+
 ## 🎯 Examples
 
 ### Movie Examples
 
 **Input:** `avatar_2009.mp4`  
-**Output:** `Avatar (2009).mp4`
+**Output:** `Avatar (2009) {tmdb-19995} [1080p H264 AAC].mp4`
 
 **Input:** `The Dark Knight - 2008.mkv`  
-**Output:** `The Dark Knight (2008).mkv`
+**Output:** `The Dark Knight (2008) {tmdb-155} [1080p H264 DTS].mkv`
 
 **Input:** `inception (2010).avi`  
-**Output:** `Inception (2010).avi`
+**Output:** `Inception (2010) {tmdb-27205} [720p MPEG4 MP3].avi`
+
+**Input:** `devil.in.a.blue.dress.1995.remastered.bdrip.x264-pignus.mkv`  
+**Output:** `Devil in a Blue Dress (1995) {tmdb-10889} {edition-Remastered} [1080p BDRIP H264].mkv`
 
 ### TV Show Examples
 
 **Input:** `breaking_bad_s01e01.mkv`  
-**Output:** `Breaking Bad (2008) - s01e01 - Pilot.mkv`
+**Output:** `Breaking Bad (2008) {tmdb-1396} - s01e01 - Pilot [1080p H264 AAC].mkv`
 
 **Input:** `The Office 2x05.mp4`  
-**Output:** `The Office (2005) - s02e05 - Halloween.mp4`
+**Output:** `The Office (2005) {tmdb-2316} - s02e05 - Halloween [720p H264 AAC].mp4`
 
 **Input:** `Friends.1.01.The.One.Where.Monica.Gets.a.Roommate.mkv`  
-**Output:** `Friends (1994) - s01e01 - The One Where Monica Gets a Roommate.mkv`
+**Output:** `Friends (1994) {tmdb-1668} - s01e01 - The One Where Monica Gets a Roommate [1080p H264 AC3].mkv`
 
 **Input:** `breaking_bad_s01e01_1080p_bluray_x264.mkv`  
-**Output:** `Breaking Bad (2008) - s01e01 - Pilot [1080p BLURAY X264].mkv`
+**Output:** `Breaking Bad (2008) {tmdb-1396} - s01e01 - Pilot [1080p BLURAY H264].mkv`
 
 **Input:** `the_office_2x05_webdl_720p.mp4`  
-**Output:** `The Office (2005) - s02e05 - Halloween [WEBDL 720P].mp4`
+**Output:** `The Office (2005) {tmdb-2316} - s02e05 - Halloween [720p WEBDL H264 AAC].mp4`
+
+### Date-Based TV Show Examples
+
+**Input:** `Corrie.02.01.15.PT1.mp4` (with pattern `{TITLE?}.{DD-MM-YY}` and `--show-name "Coronation Street"`)  
+**Output:** `Coronation Street (1960) {tmdb-291} - s56e01 - Fri Jan 02 2015 Part 1 [400p H264 AAC].mp4`
+
+**Input:** `coronation.street.2019.02.13.part.2.web.x264-kompost[eztv].mkv`  
+**Output:** `Coronation Street (1960) {tmdb-291} - s60e29 - Wed Feb 13 2019 Part 2 [480p WEB H264 AAC].mkv`
 
 ### Folder Structure Examples
 
@@ -203,6 +318,9 @@ python plex_file_renamer.py /path/to/videos --revert
 | `--api-key` | TMDb API key (or use env var) | `--api-key abc123` |
 | `--parentheses-only` | Only detect years in (2004) format | `--parentheses-only` |
 | `--revert` | Revert all renames using backup files | `--revert` |
+| `--pattern` | Custom pattern for complex file structures | `--pattern "SHOW_NAME/DATE_FORMAT{YEAR}/{TITLE?}.{DD-MM-YY}"` |
+| `--show-name` | Explicitly specify show name when not in folder structure | `--show-name "Coronation Street"` |
+| `--skip-formatted` | Skip files already formatted with TMDb IDs | `--skip-formatted` |
 
 ## 🎬 Sample Output
 
@@ -210,6 +328,9 @@ python plex_file_renamer.py /path/to/videos --revert
 Processing: /Users/john/Videos/breaking_bad_s01e01_1080p_bluray.mkv
 --------------------------------------------------
 Video duration: 47.2 minutes
+Resolution: 1080p
+Video codec: H264
+Audio codec: AAC
 Parsed title: breaking bad
 Parsed episode: S01E01
 TV show detected: True
@@ -220,11 +341,11 @@ Detected type: tv
 Searching TMDb for: breaking bad
 Found TV show: Breaking Bad (2008)
 Found episode title: Pilot
-Detected quality/source info: 1080P BLURAY
+Optional info: 1080p BLURAY H264 AAC
 
 [DRY RUN] Would rename:
   From: breaking_bad_s01e01_1080p_bluray.mkv
-  To:   Breaking Bad (2008) - s01e01 - Pilot [1080P BLURAY].mkv
+  To:   Breaking Bad (2008) {tmdb-1396} - s01e01 - Pilot [1080p BLURAY H264 AAC].mkv
 ```
 
 ## 🧠 Smart Detection Features
@@ -240,6 +361,24 @@ The script automatically detects TV shows when it finds:
 
 1. **Trailing years**: `Movie Title - 2004`, `Movie Title 2004`, `Movie Title (2004)`
 2. **Parentheses format**: `Movie Title (2004)` (when using `--parentheses-only`)
+
+### Smart Duration Matching
+
+When multiple movies/shows have similar names, the script uses video duration to find the correct match:
+
+1. **Exact Name Priority**: If the search finds an exact name match with duration within ±2 minutes, it's selected
+2. **Best Duration Match**: Otherwise, finds the match with duration closest to but higher than the file's duration
+3. **Fallback**: If no higher duration exists, uses the closest match overall
+
+Example: When searching for "Bloodsport", if both "Bloodsport (1988)" and "Bloodsport III (1996)" are found, it will choose "Bloodsport (1988)" as the exact name match, even if "Bloodsport III" has a closer duration.
+
+### Roman Numeral Support
+
+The script automatically handles different sequel numbering formats:
+
+- **Automatic conversion**: "Rocky 2" ↔ "Rocky II"
+- **Smart searching**: Searches for both number and Roman numeral versions
+- **Exact matching**: "Cannonball Run 2" correctly matches "Cannonball Run II" in TMDb
 
 ### Filename Patterns Supported
 
@@ -257,15 +396,24 @@ The script automatically detects TV shows when it finds:
 
 ### Quality & Source Detection
 
-The script automatically detects and preserves quality/source information:
+The script detects quality information from **actual video analysis** using ffmpeg, not just filename claims:
 
-**Quality:** `1080p`, `720p`, `480p`, `4K`, `2160p`  
-**Sources:** `BluRay`, `WEB-DL`, `HDTV`, `WEBRip`  
-**Codecs:** `x264`, `x265`, `HEVC`, `H264`  
-**Audio:** `AAC`, `DTS`, `AC3`, `MP3`  
-**Special:** `PROPER`, `REPACK`, `EXTENDED`, `UNRATED`
+**Detected from file:**
+- **Resolution:** Actual video resolution (1080p, 720p, 4K, etc.) from video stream
+- **Video Codec:** Real codec used (H264, H265/HEVC, MPEG4, VP9, etc.)
+- **Audio Codec:** Actual audio format (AAC, DTS, AC3, MP3, etc.)
 
-Quality info is preserved in `[brackets]` which Plex ignores for matching but keeps for user reference.
+**Preserved from filename:**
+- **Sources:** `BluRay`, `WEB-DL`, `HDTV`, `WEBRip` (can't be detected from file)
+- **Special:** `PROPER`, `REPACK`, `EXTENDED`, `UNRATED`, `REMASTERED`
+
+**Smart handling:**
+- If filename claims "1080p" but file is actually 720p, uses real resolution
+- Combines actual file properties with source info from filename
+- Quality info is preserved in `[brackets]` which Plex ignores for matching but keeps for user reference
+
+Example: `movie.1080p.BluRay.x264.mkv` analyzed as 720p H265 becomes:
+`Movie Title (2024) [720p BLURAY H265].mkv`
 
 ## 🛡️ Safety Features
 
@@ -296,6 +444,42 @@ Renamed on: 2025-01-15T10:30:45.123456
 **Video formats:**
 `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.3gp`, `.3g2`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.divx`, `.xvid`, `.rm`, `.rmvb`
 
+## ⚡ Skip Already-Formatted Files
+
+The `--skip-formatted` flag intelligently skips files that are already properly formatted:
+
+### Detection Criteria
+Files are skipped if they have:
+1. Year in parentheses: `(2020)`
+2. TMDb ID: `{tmdb-123}`
+3. Backup file: `filename.original.txt`
+
+### Use Cases
+- **Large Collections**: Re-process directories without touching completed files
+- **Incremental Updates**: Add new files to an existing organized library
+- **Batch Processing**: Safely re-run on partially completed jobs
+- **Performance**: No API calls for already-identified content
+
+### Example
+```bash
+# First run - processes all files
+python plex_file_renamer.py /movies --rename
+
+# Later runs - only processes new/unformatted files
+python plex_file_renamer.py /movies --rename --skip-formatted
+```
+
+Output:
+```
+[1/3] Processing: Avatar (2009) {tmdb-19995} [1080p H264 AAC].mkv
+✓ File already properly formatted with TMDb ID and has backup file, skipping
+
+[2/3] Processing: new_movie_2024.mkv
+Video duration: 120.5 minutes
+Searching TMDb for: new movie 2024
+...
+```
+
 ## 🔧 Troubleshooting
 
 ### Common Issues
@@ -321,6 +505,34 @@ export TMDB_API_KEY="your_api_key_here"
    Consider renaming to include episode number (e.g., S01E01, E01, etc.)
 ```
 
+**Pattern Matching Issues**
+```
+❌ Pattern did not match - falling back to standard parsing
+```
+- Check that your pattern matches your folder structure
+- For `/Show/2015/01-2015/file.ext`, use pattern `SHOW_NAME/DATE_FORMAT{YEAR}/IGNORE/filename`
+- Use `{TITLE?}` for parts you want to ignore but need to match
+
+**"File not found" Errors During Batch Processing**
+- Fixed in recent versions with dynamic file discovery
+- Files renamed during processing no longer cause errors for remaining files
+- If you see this on older versions, update to the latest release
+
+**Date Extraction Issues**
+```
+Extracted air date from filename: 2013-02-19  # Wrong date
+```
+- Recent versions prioritize YYYY-MM-DD format over DD-MM-YY
+- For `file.2019.02.13.ext`, now correctly extracts `2019-02-13`
+- Use explicit patterns for ambiguous dates
+
+**TMDb Search Failures for Long-Running Shows**
+```
+TV show not found in TMDb
+```
+- For shows like "Coronation Street" with explicit `--show-name`, year filtering is now disabled
+- Searches for show without episode year to find long-running series that started decades ago
+
 ### Debug Information
 
 The script provides detailed debug output:
@@ -328,6 +540,8 @@ The script provides detailed debug output:
 - Season detection from folders vs filenames
 - TV show vs movie detection reasoning
 - TMDb search results and matches
+- Pattern matching steps and failures
+- Date extraction and conversion process
 
 ## 🚀 Advanced Usage
 
@@ -368,31 +582,60 @@ find /media -name "*.mkv" -exec python plex_file_renamer.py {} --rename \;
 ```
 
 
+## 🔧 Recent Technical Improvements
+
+### Version 2.1.0+ Features
+
+1. **🔧 Robust Batch Processing**
+   - Dynamic file discovery prevents "file not found" errors during batch operations
+   - Files that get renamed no longer break processing of remaining files
+   - Iteration safety with maximum loop protection
+   - Graceful handling of missing files during large batch operations
+
+2. **📅 Enhanced Date-Based Episode Lookup**
+   - Improved date pattern recognition prioritizing YYYY-MM-DD format
+   - Automatic episode lookup by air date for long-running shows
+   - Searches through all seasons to find episodes by broadcast date
+   - No more fake season/episode numbers for date-based shows
+
+3. **🎯 Advanced Pattern Matching**
+   - Negative patterns with `{TITLE?}` syntax for ignoring extracted values
+   - Better handling of dot-separated filenames
+   - Flexible pattern matching that works without explicit root folders
+   - Smart fallback when pattern matching fails
+
+4. **🔍 Improved TMDb Search Logic**
+   - Long-running shows no longer filtered by episode year
+   - Better handling of shows that started decades before current episodes
+   - Exact name matching takes precedence over duration proximity
+   - Roman numeral conversion for sequel matching
+
+5. **🛡️ Error Prevention & Recovery**
+   - Early variable initialization prevents "referenced before assignment" errors
+   - Comprehensive existence checks before file operations
+   - Better error messages and debugging information
+   - Graceful degradation when pattern matching fails
+
 ## 🎯 Future Enhancements
 
 ### Usability Improvements We're Considering
 
-1. **📦 One-Click Installation**
-   ```bash
-   curl -sSL install.plex-renamer.com | bash
-   ```
-
-2. **🔗 Plex Integration**
+1. **🔗 Plex Integration**
    - Direct Plex library scanning
    - Automatic metadata refresh
    - Library health checking
 
-3. **🎨 Enhanced Detection**
+2. **🎨 Enhanced Detection**
    - Better pattern matching for edge cases
    - Support for more languages
    - Custom naming templates
 
-4. **📊 Analytics & Reporting**
+3. **📊 Analytics & Reporting**
    - Processing statistics
    - File organization insights
    - Library health reports
 
-5. **🔌 Plugin System**
+4. **🔌 Plugin System**
    - Custom naming rules
    - Additional metadata sources
    - Integration with other tools
